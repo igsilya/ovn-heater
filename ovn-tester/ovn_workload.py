@@ -30,6 +30,7 @@ ClusterConfig = namedtuple('ClusterConfig',
                             'gw_net',
                             'cluster_net',
                             'n_workers',
+                            'n_relays',
                             'vips',
                             'vip_subnet',
                             'static_vips'])
@@ -52,6 +53,7 @@ class Node(ovn_sandbox.Sandbox):
             f'cd {cluster_cfg.cluster_cmd_path} && ' \
             f'OVN_MONITOR_ALL={monitor_all} OVN_DB_CLUSTER={clustered_db} ' \
             f'CREATE_FAKE_VMS=no CHASSIS_COUNT=0 GW_COUNT=0 '\
+            f'RELAY_COUNT={cluster_cfg.n_relays} '\
             f'IP_HOST={self.mgmt_net.ip} ' \
             f'IP_CIDR={self.mgmt_net.prefixlen} ' \
             f'IP_START={self.mgmt_ip} ' \

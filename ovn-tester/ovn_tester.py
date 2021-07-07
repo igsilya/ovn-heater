@@ -23,6 +23,17 @@ def calculate_default_vips():
     vip_range = range(0, DEFAULT_N_VIPS)
     return {str(next(vip_gen)): None for _ in vip_range}
 
+def calculate_default_node_remotes(net, clustered, n_relays):
+    ip_gen = net.iter_hosts()
+    if n_relays > 0:
+        skip = 3 if clustered else 1
+        for _ in range(0, skip):
+            next(ip_gen)
+        ip_range = range(0, n_relays)
+    else:
+        ip_range = range(0, 3 if clustered else 1)
+    remotes = ["ssl:" + str(next(ip_gen)) + ":6642" for _ in ip_range]
+    return ','.join(remotes)
 
 DEFAULT_STATIC_VIP_SUBNET = netaddr.IPNetwork('5.0.0.0/8')
 DEFAULT_N_STATIC_VIPS = 65
@@ -98,6 +109,10 @@ def read_config(configuration):
         )
 
         cluster_args = config.get('cluster', dict())
+        clustered_db = cluster_args.get('clustered_db', True)
+        node_net = netaddr.IPNetwork(
+            cluster_args.get('node_net', '192.16.0.0/16'))
+        n_relays = cluster_args.get('n_relays', 0)
         cluster_cfg = ClusterConfig(
             cluster_cmd_path=cluster_args.get(
                 'cluster_cmd_path',
@@ -105,15 +120,14 @@ def read_config(configuration):
             ),
             monitor_all=cluster_args.get('monitor_all', True),
             logical_dp_groups=cluster_args.get('logical_dp_groups', True),
-            clustered_db=cluster_args.get('clustered_db', True),
+            clustered_db=clustered_db,
             raft_election_to=cluster_args.get('raft_election_to', 16),
             db_inactivity_probe=cluster_args.get('db_inactivity_probe', 60000),
-            node_net=netaddr.IPNetwork(
-                cluster_args.get('node_net', '192.16.0.0/16')
-            ),
-            node_remote=cluster_args.get(
-                'node_remote',
-                'ssl:192.16.0.1:6642,ssl:192.16.0.2:6642,ssl:192.16.0.3:6642'
+            node_net=node_net,
+            n_relays=n_relays,
+            node_remote=cluster_args.get('node_remote',
+                calculate_default_node_remotes(node_net, clustered_db,
+                                               n_relays)
             ),
             node_timeout_s=cluster_args.get('node_timeout_s', 20),
             internal_net=netaddr.IPNetwork(
