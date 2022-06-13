@@ -29,6 +29,7 @@ ovn_tester=${topdir}/ovn-tester
 ovn_tester_log_file=test-log
 
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
+JEMALLOC_VERSION=${JEMALLOC_VERSION:-}
 USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
 
 function die() {
@@ -215,7 +216,13 @@ function install_ovn_fake_multinode() {
         fi
 
         # Build images locally.
-        OS_IMAGE=$os_image OVS_SRC_PATH=${rundir}/ovs OVN_SRC_PATH=${rundir}/ovn EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} USE_OVSDB_ETCD=${USE_OVSDB_ETCD} ./ovn_cluster.sh build
+        OS_IMAGE=$os_image \
+        OVS_SRC_PATH=${rundir}/ovs \
+        OVN_SRC_PATH=${rundir}/ovn \
+        EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
+        JEMALLOC_VERSION=${JEMALLOC_VERSION} \
+        USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
+        ./ovn_cluster.sh build
     fi
     # Tag and push image
     docker tag ovn/ovn-multi-node localhost:5000/ovn/ovn-multi-node

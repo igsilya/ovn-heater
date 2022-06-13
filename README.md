@@ -160,7 +160,9 @@ This step will:
   fake nodes spawned during the tests.  OVS/OVN binaries are built with
   `CFLAGS="-g -O2 -fno-omit-frame-pointer"`.  More aggressive optimizations
   can be enabled by setting the `EXTRA_OPTIMIZE=yes` environment variable
-  (`EXTRA_OPTIMIZE=yes ./do.sh install`).
+  (`EXTRA_OPTIMIZE=yes ./do.sh install`).  OVS and OVN can also be optionally
+  built to use `jemalloc` memory allocator if `JEMALLOC_VERSION=<version>`
+  is specified (`JEMALLOC_VERSION=5.3.0 ./do.sh install`)
 - push the container image to all other nodes and prepare the test environment.
 
 To override the OVS, OVN or ovn-fake-multinode repos/branches use the
