@@ -155,6 +155,11 @@ ovn_branch="${OVN_BRANCH:-main}"
 ovn_fmn_repo="${OVN_FAKE_MULTINODE_REPO:-https://github.com/ovn-org/ovn-fake-multinode.git}"
 ovn_fmn_branch="${OVN_FAKE_MULTINODE_BRANCH:-main}"
 
+# jemalloc env vars
+jemalloc_repo="${JEMALLOC_REPO:-https://github.com/jemalloc/jemalloc.git}"
+jemalloc_branch="${JEMALLOC_BRANCH:-}"
+
+
 OS_IMAGE_OVERRIDE="${OS_IMAGE_OVERRIDE}"
 
 function install_ovn_fake_multinode() {
@@ -183,6 +188,15 @@ function install_ovn_fake_multinode() {
         clone_component ovn ${ovn_repo} ${ovn_branch} || rebuild_needed=1
     fi
 
+    if [ -n "${jemalloc_branch}" ]
+    then
+        USE_JEMALLOC=yes
+        clone_component jemalloc ${jemalloc_repo} ${jemalloc_branch} || rebuild_needed=1
+    else
+        [ -d jemalloc ] || rm -rf jemalloc
+        rebuild_needed=1
+        USE_JEMALLOC=no
+    fi
 
     pushd ${rundir}/ovn-fake-multinode
 
@@ -220,7 +234,7 @@ function install_ovn_fake_multinode() {
         OVS_SRC_PATH=${rundir}/ovs \
         OVN_SRC_PATH=${rundir}/ovn \
         EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE} \
-        JEMALLOC_VERSION=${JEMALLOC_VERSION} \
+        USE_JEMALLOC=${USE_JEMALLOC} \
         USE_OVSDB_ETCD=${USE_OVSDB_ETCD} \
         ./ovn_cluster.sh build
     fi
@@ -268,8 +282,9 @@ function record_test_config() {
     echo "-- Storing test components versions in ${out_file}"
     > ${out_file}
 
-    components=("ovn-fake-multinode" "ovs" "ovn")
+    components=("ovn-fake-multinode" "ovs" "ovn" "jemalloc")
     for d in "${components[@]}"; do
+        [ -d "${rundir}/$d" ] || continue
         pushd ${rundir}/$d
         local origin=$(git config --get remote.origin.url)
         local sha=$(git rev-parse HEAD)
