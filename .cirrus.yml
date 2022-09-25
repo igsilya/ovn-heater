@@ -7,8 +7,9 @@ low_scale_task:
     memory: 8G
 
   env:
-    DEPENDENCIES: git ansible ansible-collection-ansible-posix
-                  podman podman-docker
+    DEPENDENCIES: git ansible podman podman-docker
+                  ansible-collection-ansible-posix
+                  ansible-collection-ansible-utils
     PHYS_DEPLOYMENT: ${CIRRUS_WORKING_DIR}/physical-deployments/ci.yml
 
   runtime_cache:
