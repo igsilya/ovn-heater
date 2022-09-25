@@ -1,0 +1,136 @@
+- name: Bring up the tester
+  hosts: tester_hosts
+  become: true
+  tasks:
+  - name: Start tester container
+    shell: |
+      docker run -dt --name=ovn-tester --hostname=ovn-tester \
+                     --privileged ovn/ovn-tester
+
+  - name: Add tester container interfaces to OVS bridges
+    shell: |
+      cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
+      ./ovs-docker add-port br-ovn eth1 ovn-tester \
+          --ipaddress={{ mgmt_net|ansible.utils.ipaddr('1') }}
+      ./ovs-docker add-port br-ovn-ext eth2 ovn-tester
+
+
+- name: Bring up central nodes
+  hosts: central_hosts
+  become: true
+  tasks:
+  - name: Start central containers
+    shell: |
+      cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
+      OVN_MONITOR_ALL={{ monitor_all }} OVN_DB_CLUSTER={{ clustered_db }} \
+        ENABLE_SSL={{ enable_ssl }} ENABLE_ETCD={{ etcd_cmd }} \
+        OVN_DP_TYPE={{ datapath_type }} RELAY_COUNT={{ n_relays }} \
+        CREATE_FAKE_VMS=no CHASSIS_COUNT=0 GW_COUNT=0 \
+        IP_HOST={{ mgmt_net|ansible.utils.ipaddr('network') }} \
+        IP_CIDR={{ mgmt_net|ansible.utils.ipaddr('prefix') }} \
+        IP_START={{ mgmt_net|ansible.utils.ipmath(2) }} \
+        ./ovn_cluster.sh start
+
+
+- name: Bring up worker nodes
+  hosts: worker_hosts
+  become: true
+  tasks:
+  - name: Start worker containers
+    shell: |
+      cd {{ ovn_fake_multinode_target_path }}/ovn-fake-multinode
+      OVN_MONITOR_ALL={{ monitor_all }} OVN_DB_CLUSTER={{ clustered_db }} \
+        ENABLE_SSL={{ enable_ssl }} ENABLE_ETCD={{ etcd_cmd }} \
+        OVN_DP_TYPE={{ datapath_type }} RELAY_COUNT={{ n_relays }} \
+        CREATE_FAKE_VMS=no CHASSIS_COUNT=0 GW_COUNT=0 \
+        IP_HOST={{ mgmt_net|ansible.utils.ipaddr('network') }} \
+        IP_CIDR={{ mgmt_net|ansible.utils.ipaddr('prefix') }} \
+        IP_START={{ mgmt_net|ansible.utils.ipmath(1 + item|int) }} \
+        ./ovn_cluster.sh add-chassis {{ node_name }}-{{ item }} tcp:0.0.0.1:6642
+    loop: "{{ range(groups['worker_hosts'].index(inventory_hostname) + 1,
+                    n_nodes + 1, groups['worker_hosts']|length) }}"
+
+
+- name: Wire up SSH access from tester to other nodes
+  hosts: all
+  become: true
+  tasks:
+  - name: Generate SSH keys
+    when: "'tester_hosts' in group_names"
+    shell: |
+      docker exec ovn-tester bash -c \
+        "yes y | ssh-keygen -t rsa -N '' -q -f /root/.ssh/id_rsa"
+      docker cp ovn-tester:/root/.ssh/id_rsa.pub /tmp/id_rsa.pub
+
+  - name: Copy the public key to all hosts
+    synchronize:
+      src: "/tmp/id_rsa.pub"
+      dest: "/tmp/id_rsa.pub.ovn-tester"
+    delegate_to: "{{ groups.tester_hosts[0] }}"
+
+  - name: Enumerate containers
+    shell: |
+      docker ps --filter='name=ovn-' --noheading --format={{ '{{.Names}}' }}
+    register: containers
+
+  - name: Authorize the key for all containers
+    shell: |
+      docker cp /tmp/id_rsa.pub.ovn-tester {{ item }}:/tmp/
+      docker exec {{ item }} bash -c "
+        mkdir -p /root/.ssh/;
+        cat /tmp/id_rsa.pub.ovn-tester >> /root/.ssh/authorized_keys;
+        chmod og-wx /root/.ssh/authorized_keys;
+      "
+    loop: "{{ containers.stdout_lines }}"
+
+  - name: Get to know all the containers
+    # Running a loop over all containers splitting the work between all
+    # hosts, but using delegation so the actual execution is happening
+    # on the tester node and all results end up in the tester container.
+    shell: |
+      docker exec ovn-tester bash -c "
+        ssh-keyscan {{ mgmt_net|ansible.utils.ipmath(item) }} \\
+            >> /tmp/known_hosts_{{ inventory_hostname }};
+      "
+    loop: "{{ range(groups['all'].index(inventory_hostname) + 1,
+                    (1 + n_central + n_relays + n_nodes) + 1,
+                    groups['all']|length) }}"
+    delegate_to: "{{ groups.tester_hosts[0] }}"
+
+  - name: Update known_hosts for ovn-tester
+    when: "'tester_hosts' in group_names"
+    shell: |
+      docker exec ovn-tester bash -c "
+        cat /tmp/known_hosts* >> /root/.ssh/known_hosts;
+      "
+
+  - name: Check SSH from the tester to all containers
+    shell: |
+      docker exec ovn-tester bash -c "
+        ssh root@{{ mgmt_net|ansible.utils.ipmath(item) }} echo Hello;
+      "
+    loop: "{{ range(groups['all'].index(inventory_hostname) + 1,
+                    (1 + n_central + n_relays + n_nodes) + 1,
+                    groups['all']|length) }}"
+    delegate_to: "{{ groups.tester_hosts[0] }}"
+
+
+- name: Start process monitoring
+  hosts: all
+  become: true
+  tasks:
+  - name: Enumerate containers
+    shell: |
+      docker ps --filter='name=ovn-' --noheading --format={{ '{{.Names}}' }}
+    register: containers
+
+  - name: Copy and start the process monitoring script in containers
+    shell: |
+      docker cp /tmp/process-monitor.py {{ item }}:/tmp/
+      docker exec {{ item }} bash -c "
+        nohup python3 /tmp/process-monitor.py \\
+          -s {{ item }} \\
+          -o /var/log/process-stats.json \\
+          -x /tmp/process-monitor.exit &
+      "
+    loop: "{{ containers.stdout_lines }}"
