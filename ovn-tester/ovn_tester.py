@@ -80,6 +80,8 @@ ClusterBringupCfg = namedtuple('ClusterBringupCfg', ['n_pods_per_node'])
 
 def calculate_default_node_remotes(net, clustered, n_relays, enable_ssl):
     ip_gen = net.iter_hosts()
+    # The first IP is assigned to the tester itself, skip it.
+    next(ip_gen)
     if n_relays > 0:
         skip = 3 if clustered else 1
         for _ in range(0, skip):
