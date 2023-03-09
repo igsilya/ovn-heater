@@ -1,0 +1,7 @@
+- name: Install dependencies
+  hosts: ovn_hosts
+  tasks:
+    - name: Install required packages
+      shell: apt -y install git gcc openvswitch-switch python3-yaml python3-virtualenv python3-all-dev
+    - name: Install container command
+      shell: apt -y install docker.io

@@ -33,9 +33,37 @@ ovn_tester=${topdir}/ovn-tester
 EXTRA_OPTIMIZE=${EXTRA_OPTIMIZE:-no}
 USE_OVSDB_ETCD=${USE_OVSDB_ETCD:-no}
 
+DISTRO_IDS=$(awk -F= '/^ID/{print$2}' /etc/os-release)
+
+function is_rpm_based() {
+    case $DISTRO_IDS in
+    centos* | rhel* | fedora*)
+        true
+    ;;
+    *)
+        false
+    ;;
+    esac
+}
+
+function is_deb_based() {
+    case $DISTRO_IDS in
+    debian* | ubuntu*)
+        true
+        ;;
+    *)
+        false
+        ;;
+    esac
+}
+
 function die() {
     echo $1
     exit 1
+}
+
+function die_distro() {
+    die "Unable to determine distribution type."
 }
 
 function generate() {
@@ -52,19 +80,37 @@ function generate() {
 
 function install_deps() {
     echo "-- Installing dependencies on all nodes"
-    ansible-playbook ${ovn_fmn_playbooks}/install-dependencies.yml -i ${hosts_file}
+    local _install_dep_playbook
+    if is_rpm_based
+    then
+        _install_dep_playbook=install-dependencies-rpm.yml
+    elif is_deb_based
+    then
+        _install_dep_playbook=install-dependencies-deb.yml
+    else
+        die_distro
+    fi
+    ansible-playbook ${ovn_fmn_playbooks}/${_install_dep_playbook} -i ${hosts_file}
 
     echo "-- Installing local dependencies"
-    if yum install docker-ce --nobest -y
+    if is_rpm_based
     then
-        systemctl start docker
+        if yum install docker-ce --nobest -y
+        then
+            systemctl start docker
+        else
+            yum install -y podman podman-docker
+        fi
+        yum install redhat-lsb-core datamash \
+            python3-pip python3-virtualenv python3 python3-devel python-virtualenv \
+            --skip-broken -y
+        [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
+    elif is_deb_based
+    then
+        apt -y install datamash docker.io python3-pip python3-virtualenv python3 python3-all-dev python3-virtualenv
     else
-        yum install -y podman podman-docker
+        die_distro
     fi
-    yum install redhat-lsb-core datamash \
-        python3-pip python3-virtualenv python3 python3-devel python-virtualenv \
-        --skip-broken -y
-    [ -e /usr/bin/pip ] || ln -sf /usr/bin/pip3 /usr/bin/pip
 
     containers=$(docker ps --all --filter='name=(ovn|registry)' \
                         | grep -v "CONTAINER ID" | awk '{print $1}' || true)
@@ -76,6 +122,8 @@ function install_deps() {
     [ -d /var/lib/registry ] || mkdir /var/lib/registry -p
     docker run --privileged -d --name registry -p 5000:5000 \
           -v /var/lib/registry:/var/lib/registry --restart=always docker.io/library/registry:2
+    if [ -d /etc/containers ]
+    then
         cp /etc/containers/registries.conf /etc/containers/registries.conf.bak
         cat > /etc/containers/registries.conf << EOF
 [registries.search]
@@ -85,6 +133,7 @@ registries = ['localhost:5000']
 [registries.block]
 registries = []
 EOF
+    fi
 }
 
 function install_venv() {
