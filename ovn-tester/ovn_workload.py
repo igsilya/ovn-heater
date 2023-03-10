@@ -163,16 +163,14 @@ class WorkerNode(Node):
     @ovn_stats.timeit
     def connect(self, cluster_cfg):
         log.info(f'Connecting worker {self.container}')
-        self.run(
-            cmd=f'ovs-vsctl -- set open_vswitch . '
-            f'external-ids:ovn-remote={cluster_cfg.node_remote}'
+        self.vsctl.set_global_external_id(
+            'ovn-remote', f'{cluster_cfg.node_remote}'
         )
 
     def configure_localnet(self, physical_net):
         log.info(f'Creating localnet on {self.container}')
-        self.run(
-            cmd=f'ovs-vsctl -- set open_vswitch . '
-            f'external-ids:ovn-bridge-mappings={physical_net}:br-ex'
+        self.vsctl.set_global_external_id(
+            'ovn-bridge-mappings', f'{physical_net}:br-ex'
         )
 
     def configure(self, physical_net):
