@@ -413,6 +413,12 @@ function mine_data() {
                             | grep ovn-scale | head -3)
     python3 ${topdir}/utils/process-stats.py \
         resource-usage-report-worker.html ${resource_usage_logs}
+
+    # Preparing reports for aggregated resource usage.
+    resource_usage_logs=$(find ${out_dir}/logs -name process-stats.json)
+    python3 ${topdir}/utils/process-stats.py \
+        resource-usage-report-aggregated.html ${resource_usage_logs}
+
     deactivate
 
     popd
