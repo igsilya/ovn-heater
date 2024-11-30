@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -o errexit -o pipefail
-
+# Test
 topdir=$(pwd)
 rundir_name=runtime
 rundir=${topdir}/${rundir_name}
